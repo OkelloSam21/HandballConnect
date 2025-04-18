@@ -21,27 +21,32 @@ class FeedViewModel @Inject constructor(
     private val postRepository: PostRepository,
     private val userRepository: UserRepository
 ) : ViewModel() {
-    
+
     // Feed state
     private val _feedState = MutableStateFlow<FeedState>(FeedState.Loading)
     val feedState: StateFlow<FeedState> = _feedState.asStateFlow()
-    
+
     // Selected post for comments
     private val _selectedPost = MutableStateFlow<Post?>(null)
     val selectedPost: StateFlow<Post?> = _selectedPost.asStateFlow()
-    
+
     // Comments state
     private val _commentsState = MutableStateFlow<CommentsState>(CommentsState.Initial)
     val commentsState: StateFlow<CommentsState> = _commentsState.asStateFlow()
-    
-    // Post creation state
-    private val _postCreationState = MutableStateFlow<PostCreationState>(PostCreationState.Initial)
-    val postCreationState: StateFlow<PostCreationState> = _postCreationState.asStateFlow()
-    
+
     // Initialize by loading feed posts
     init {
         loadFeedPosts()
     }
+
+    // Post creation state
+    private val _postCreationState = MutableStateFlow<PostCreationState>(PostCreationState.Initial)
+    val postCreationState: StateFlow<PostCreationState> = _postCreationState.asStateFlow()
+
+    // Reset post creation state
+//    fun resetPostCreationState() {
+//        _postCreationState.value = PostCreationState.Initial
+//    }
     
     // Load feed posts
     fun loadFeedPosts() {
@@ -68,24 +73,30 @@ class FeedViewModel @Inject constructor(
             }
         }
     }
-    
-    // Create a new post
+
+    // Create a new post with improved error handling
     fun createPost(text: String, imageUri: Uri? = null, isAnnouncement: Boolean = false) {
         _postCreationState.value = PostCreationState.Loading
-        
+
         viewModelScope.launch {
-            val result = postRepository.createPost(text, imageUri, isAnnouncement)
-            
-            result.onSuccess {
-                _postCreationState.value = PostCreationState.Success
-                // Reload feed posts to include the new post
-                loadFeedPosts()
-            }.onFailure { exception ->
-                _postCreationState.value = PostCreationState.Error(exception.message ?: "Failed to create post")
+            try {
+                val result = postRepository.createPost(text, imageUri, isAnnouncement)
+
+                result.onSuccess {
+                    _postCreationState.value = PostCreationState.Success
+                    // Reload feed posts to include the new post
+                    loadFeedPosts()
+                }.onFailure { exception ->
+                    Log.e("FeedViewModel", "Post creation failed: ${exception.message}")
+                    _postCreationState.value = PostCreationState.Error(exception.message ?: "Failed to create post")
+                }
+            } catch (e: Exception) {
+                Log.e("FeedViewModel", "Exception during post creation: ${e.message}")
+                _postCreationState.value = PostCreationState.Error(e.message ?: "An unexpected error occurred")
             }
         }
     }
-    
+
     // Like or unlike a post
     fun toggleLike(postId: String) {
         viewModelScope.launch {
