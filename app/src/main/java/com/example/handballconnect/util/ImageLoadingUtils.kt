@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -15,6 +18,7 @@ import coil.compose.AsyncImagePainter
 import coil.request.ImageRequest
 import com.example.handballconnect.data.storage.ImageStorageManager
 import javax.inject.Inject
+import androidx.core.net.toUri
 
 /**
  * Utility class for handling image loading with local references
@@ -37,7 +41,7 @@ class ImageLoadingUtils @Inject constructor(
             imageStorageManager.getImageUri(imageReference)
         } else if (imageReference.startsWith("http")) {
             // It's a remote URL
-            Uri.parse(imageReference)
+            imageReference.toUri()
         } else {
             // Unknown format
             null
@@ -66,6 +70,7 @@ fun LocalAwareAsyncImage(
     fallbackImageUrl: String? = null
 ) {
     val context = LocalContext.current
+    var isLoading by remember { mutableStateOf(true) }
     
     val imageUri = remember(imageReference) {
         if (imageReference?.startsWith(ImageStorageManager.LOCAL_URI_PREFIX) == true) {
@@ -73,30 +78,36 @@ fun LocalAwareAsyncImage(
             imageStorageManager.getImageUri(imageReference)
         } else if (imageReference?.startsWith("http") == true) {
             // It's a remote URL
-            Uri.parse(imageReference)
+            imageReference.toUri()
         } else {
             // Use fallback or null
-            fallbackImageUrl?.let { Uri.parse(it) }
+            fallbackImageUrl?.toUri()
         }
     }
-    
-    AsyncImage(
-        model = ImageRequest.Builder(context)
-            .data(imageUri)
-            .crossfade(true)
-            .build(),
-        contentDescription = contentDescription,
-        modifier = modifier,
-        contentScale = contentScale,
-        onState = { state ->
-            if (state is AsyncImagePainter.State.Loading && showLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
+
+    Box(modifier = Modifier) {
+        AsyncImage(
+            model = ImageRequest.Builder(context)
+                .data(imageUri)
+                .crossfade(true)
+                .build(),
+            contentDescription = contentDescription,
+            modifier = modifier,
+            contentScale = contentScale,
+            onState = { state ->
+                isLoading = state is AsyncImagePainter.State.Loading
             }
+        )
+
+        if (isLoading && showLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ){
+                CircularProgressIndicator()
+            }
+
         }
-    )
+    }
 }
+
