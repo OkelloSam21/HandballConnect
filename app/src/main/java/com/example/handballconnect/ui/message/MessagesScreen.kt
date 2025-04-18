@@ -362,17 +362,18 @@ fun MessagesScreen(
                                         user = user,
                                         onClick = {
                                             messageViewModel.startConversation(
-                                                userId = user.userId,
-                                                onSuccess = { conversation ->
-                                                    messageViewModel.selectConversation(conversation)
-                                                    showNewConversationDialog = false
-                                                    showChatView = true
-                                                },
-                                                onError = { error ->
-                                                    scope.launch {
-                                                        snackbarHostState.showSnackbar(error)
-                                                    }
-                                                }
+                                                otherUserId = user.userId,
+//                                                userId = user.userId,
+//                                                onSuccess = { conversation ->
+//                                                    messageViewModel.selectConversation(conversation)
+//                                                    showNewConversationDialog = false
+//                                                    showChatView = true
+//                                                },
+//                                                onError = { error ->
+//                                                    scope.launch {
+//                                                        snackbarHostState.showSnackbar(error)
+//                                                    }
+//                                                }
                                             )
                                         }
                                     )
