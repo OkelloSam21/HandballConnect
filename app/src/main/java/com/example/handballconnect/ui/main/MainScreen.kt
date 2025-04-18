@@ -4,6 +4,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Feed
+import androidx.compose.material.icons.automirrored.filled.Message
+import androidx.compose.material.icons.automirrored.outlined.Feed
+import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Feed
 import androidx.compose.material.icons.filled.Message
@@ -32,6 +36,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.handballconnect.data.storage.ImageStorageManager
 import com.example.handballconnect.ui.admin.AdminScreen
 import com.example.handballconnect.ui.admin.AdminViewModel
 import com.example.handballconnect.ui.auth.AuthViewModel
@@ -46,10 +51,11 @@ import com.example.handballconnect.ui.tatctic.TacticsViewModel
 @Composable
 fun MainScreen(
     navController: NavController,
-    authViewModel: AuthViewModel
+    authViewModel: AuthViewModel,
+    imageStorageManager: ImageStorageManager
 ) {
     val userData by authViewModel.userData.collectAsState()
-    val isAdmin = userData?.isAdmin ?: false
+    val isAdmin = userData?.isAdmin == true
     
     val mainNavController = rememberNavController()
     val navBackStackEntry by mainNavController.currentBackStackEntryAsState()
@@ -61,14 +67,14 @@ fun MainScreen(
             NavigationItem(
                 route = "feed",
                 title = "Feed",
-                selectedIcon = Icons.Filled.Feed,
-                unselectedIcon = Icons.Outlined.Feed
+                selectedIcon = Icons.AutoMirrored.Filled.Feed,
+                unselectedIcon = Icons.AutoMirrored.Outlined.Feed
             ),
             NavigationItem(
                 route = "messages",
                 title = "Messages",
-                selectedIcon = Icons.Filled.Message,
-                unselectedIcon = Icons.Outlined.Message
+                selectedIcon = Icons.AutoMirrored.Filled.Message,
+                unselectedIcon = Icons.AutoMirrored.Outlined.Message
             ),
             NavigationItem(
                 route = "tactics",
@@ -144,7 +150,10 @@ fun MainScreen(
             ) {
                 composable("feed") {
                     val feedViewModel: FeedViewModel = hiltViewModel()
-                    FeedScreen(feedViewModel = feedViewModel)
+                    FeedScreen(
+                        feedViewModel = feedViewModel,
+                        imageStorageManager = imageStorageManager
+                    )
                 }
                 
                 composable("messages") {
@@ -158,7 +167,11 @@ fun MainScreen(
                 }
                 
                 composable("profile") {
-                    ProfileScreen(authViewModel = authViewModel, navController = navController)
+                    ProfileScreen(
+                        authViewModel = authViewModel,
+                        navController = navController,
+                        imageStorageManager  = imageStorageManager
+                        )
                 }
                 
                 if (isAdmin) {
