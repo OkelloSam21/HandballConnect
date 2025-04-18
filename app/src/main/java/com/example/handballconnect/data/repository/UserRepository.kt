@@ -22,68 +22,31 @@ import javax.inject.Singleton
 @Singleton
 class UserRepository @Inject constructor() {
     private val auth = FirebaseAuth.getInstance()
-    private val database = FirebaseDatabase.getInstance().reference
     private val storage = FirebaseStorage.getInstance().reference
-
-    //firestore
     private val fireStore = FirebaseFirestore.getInstance()
-    val userCollection = fireStore.collection("users")
-    
+    private val userCollection = fireStore.collection("users")
+
     // Get current user ID
     fun getCurrentUserId(): String? {
         return auth.currentUser?.uid
     }
-    
+
     // Get current Firebase user
     fun getCurrentUser(): FirebaseUser? {
         return auth.currentUser
     }
-    
+
     // Check if user is logged in
     fun isUserLoggedIn(): Boolean {
         return auth.currentUser != null
     }
-    
-    // Register new user
-    suspend fun registerUser(email: String, password: String, username: String): Result<User> {
-        return try {
-            val authResult = auth.createUserWithEmailAndPassword(email, password).await()
-            val firebaseUser = authResult.user
-            
-            if (firebaseUser != null) {
-                // Update profile with username
-                val profileUpdates = UserProfileChangeRequest.Builder()
-                    .setDisplayName(username)
-                    .build()
-                
-                firebaseUser.updateProfile(profileUpdates).await()
-                
-                // Create user in database
-                val userId = firebaseUser.uid
-                val newUser = User(
-                    userId = userId,
-                    username = username,
-                    email = email
-                )
 
-                userCollection.document().set(newUser)
-
-//                database.child("users").child(userId).setValue(newUser.toMap()).await()
-                Result.success(newUser)
-            } else {
-                Result.failure(Exception("User registration failed"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-    
     // Login user
     suspend fun loginUser(email: String, password: String): Result<FirebaseUser> {
         return try {
             val authResult = auth.signInWithEmailAndPassword(email, password).await()
             val user = authResult.user
-            
+
             if (user != null) {
                 Result.success(user)
             } else {
@@ -93,12 +56,12 @@ class UserRepository @Inject constructor() {
             Result.failure(e)
         }
     }
-    
+
     // Logout user
     fun logoutUser() {
         auth.signOut()
     }
-    
+
     // Reset password
     suspend fun resetPassword(email: String): Result<Unit> {
         return try {
@@ -108,43 +71,97 @@ class UserRepository @Inject constructor() {
             Result.failure(e)
         }
     }
-    
-    // Get user by ID
-    fun getUserById(userId: String): Flow<Result<User>> = callbackFlow {
-        val userListener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val user = snapshot.getValue(User::class.java)
-                if (user != null) {
-                    trySend(Result.success(user))
+
+    // Register new user
+    suspend fun registerUser(email: String, password: String, username: String): Result<User> {
+        return try {
+            val authResult = auth.createUserWithEmailAndPassword(email, password).await()
+            val firebaseUser = authResult.user
+
+            if (firebaseUser != null) {
+                // Update profile with username
+                val profileUpdates = UserProfileChangeRequest.Builder()
+                    .setDisplayName(username)
+                    .build()
+
+                firebaseUser.updateProfile(profileUpdates).await()
+
+                // Create user in database
+                val userId = firebaseUser.uid
+                val newUser = User(
+                    userId = userId,
+                    username = username,
+                    email = email
+                )
+
+                userCollection.document(userId).set(newUser).await()
+                Result.success(newUser)
+            } else {
+                Result.failure(Exception("User registration failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // Get current user data
+    fun getCurrentUserData(): Flow<Result<User>> = callbackFlow {
+        val userId = getCurrentUserId() ?: run {
+            trySend(Result.failure(Exception("User not logged in")))
+            close()
+            return@callbackFlow
+        }
+
+        val listenerRegistration = userCollection.document(userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    trySend(Result.failure(error))
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null && snapshot.exists()) {
+                    val user = snapshot.toObject(User::class.java)
+                    if (user != null) {
+                        trySend(Result.success(user))
+                    } else {
+                        trySend(Result.failure(Exception("User data is null")))
+                    }
                 } else {
                     trySend(Result.failure(Exception("User not found")))
                 }
             }
-            
-            override fun onCancelled(error: DatabaseError) {
-                trySend(Result.failure(error.toException()))
-            }
-        }
-        
-        val userRef = database.child("users").child(userId)
-        userRef.addValueEventListener(userListener)
-        
-        // Remove the listener when the flow is cancelled
+
         awaitClose {
-            userRef.removeEventListener(userListener)
+            listenerRegistration.remove()
         }
     }
-    
-    // Get current user data
-    fun getCurrentUserData(): Flow<Result<User>> {
-        val userId = getCurrentUserId() ?: return callbackFlow {
-            trySend(Result.failure(Exception("User not logged in")))
-            awaitClose { }
+
+    // Get user by ID
+    fun getUserById(userId: String): Flow<Result<User>> = callbackFlow {
+        val listenerRegistration = userCollection.document(userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    trySend(Result.failure(error))
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null && snapshot.exists()) {
+                    val user = snapshot.toObject(User::class.java)
+                    if (user != null) {
+                        trySend(Result.success(user))
+                    } else {
+                        trySend(Result.failure(Exception("User data is null")))
+                    }
+                } else {
+                    trySend(Result.failure(Exception("User not found")))
+                }
+            }
+
+        awaitClose {
+            listenerRegistration.remove()
         }
-        
-        return getUserById(userId)
     }
-    
+
     // Update user profile
     suspend fun updateUserProfile(
         username: String? = null,
@@ -152,74 +169,70 @@ class UserRepository @Inject constructor() {
         experience: String? = null
     ): Result<Unit> {
         val userId = getCurrentUserId() ?: return Result.failure(Exception("User not logged in"))
-        
+
         return try {
             val updates = mutableMapOf<String, Any>()
-            
+
             username?.let { updates["username"] = it }
             position?.let { updates["position"] = it }
             experience?.let { updates["experience"] = it }
-            
+
             if (updates.isNotEmpty()) {
-                database.child("users").child(userId).updateChildren(updates).await()
+                userCollection.document(userId).update(updates).await()
             }
-            
+
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
-    
+
     // Upload profile image
     suspend fun uploadProfileImage(imageUri: Uri): Result<String> {
         val userId = getCurrentUserId() ?: return Result.failure(Exception("User not logged in"))
-        
+
         return try {
             val filename = UUID.randomUUID().toString()
             val ref = storage.child("profile_images/$userId/$filename")
-            
-            val uploadTask = ref.putFile(imageUri).await()
+
+            ref.putFile(imageUri).await()
             val downloadUrl = ref.downloadUrl.await().toString()
-            
+
             // Update user profile with the new image URL
-            database.child("users").child(userId).child("profileImageUrl").setValue(downloadUrl).await()
-            
+            userCollection.document(userId).update("profileImageUrl", downloadUrl).await()
+
             Result.success(downloadUrl)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
-    
-    // Get all users (for admin)
+
+    // Get all users
     fun getAllUsers(): Flow<Result<List<User>>> = callbackFlow {
-        val usersListener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val usersList = mutableListOf<User>()
-                for (userSnapshot in snapshot.children) {
-                    userSnapshot.getValue(User::class.java)?.let {
-                        usersList.add(it)
-                    }
+        val listenerRegistration = userCollection
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    trySend(Result.failure(error))
+                    return@addSnapshotListener
                 }
-                trySend(Result.success(usersList))
+
+                if (snapshot != null) {
+                    val users = snapshot.documents.mapNotNull { doc ->
+                        doc.toObject(User::class.java)
+                    }
+                    trySend(Result.success(users))
+                }
             }
-            
-            override fun onCancelled(error: DatabaseError) {
-                trySend(Result.failure(error.toException()))
-            }
-        }
-        
-        val usersRef = database.child("users")
-        usersRef.addValueEventListener(usersListener)
-        
+
         awaitClose {
-            usersRef.removeEventListener(usersListener)
+            listenerRegistration.remove()
         }
     }
-    
-    // Update user admin status (for admin)
+
+    // Update user admin status
     suspend fun updateUserAdminStatus(userId: String, isAdmin: Boolean): Result<Unit> {
         return try {
-            database.child("users").child(userId).child("isAdmin").setValue(isAdmin).await()
+            userCollection.document(userId).update("isAdmin", isAdmin).await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
