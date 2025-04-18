@@ -1,6 +1,7 @@
 package com.example.handballconnect.ui.feed
 
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -73,6 +74,8 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.handballconnect.data.model.Comment
 import com.example.handballconnect.data.model.Post
+import com.example.handballconnect.data.storage.ImageStorageManager
+import com.example.handballconnect.util.LocalAwareAsyncImage
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -81,7 +84,8 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedScreen(
-    feedViewModel: FeedViewModel
+    feedViewModel: FeedViewModel,
+    imageStorageManager: ImageStorageManager
 ) {
     val feedState by feedViewModel.feedState.collectAsState()
     val selectedPost by feedViewModel.selectedPost.collectAsState()
@@ -102,10 +106,29 @@ fun FeedScreen(
     val commentSheetState = rememberModalBottomSheetState()
     var commentText by remember { mutableStateOf("") }
 
+    val context = LocalContext.current
+
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        selectedImageUri = uri
+        if (uri != null) {
+            Log.d("FeedScreen", "Image selected: $uri")
+            try {
+                val contentResolver = context.contentResolver
+                val mimeType = contentResolver.getType(uri)
+                Log.d("FeedScreen", "Image mime type: $mimeType")
+
+                // Store the uri for later use
+                selectedImageUri = uri
+            } catch (e: Exception) {
+                Log.e("FeedScreen", "Error handling selected image: ${e.message}", e)
+                scope.launch {
+                    snackbarHostState.showSnackbar("Failed to process the selected image")
+                }
+            }
+        } else {
+            Log.d("FeedScreen", "No image selected")
+        }
     }
 
     // Handle post creation state changes
@@ -203,7 +226,8 @@ fun FeedScreen(
                                             }
                                         }
                                     )
-                                }
+                                },
+                                imageStorageManager = imageStorageManager
                             )
                         }
                     }
@@ -482,7 +506,8 @@ fun PostItem(
     post: Post,
     onLikeClick: () -> Unit,
     onCommentClick: () -> Unit,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    imageStorageManager: ImageStorageManager
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -506,18 +531,16 @@ fun PostItem(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // User profile image
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(post.userProfileImageUrl.takeIf { it.isNotEmpty() }
-                                ?: "https://via.placeholder.com/40")
-                            .crossfade(true)
-                            .build(),
+                    LocalAwareAsyncImage(
+                        imageReference = post.userProfileImageUrl,
+                        imageStorageManager = imageStorageManager,
                         contentDescription = "User profile",
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
                             .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape),
-                        contentScale = ContentScale.Crop
+                        contentScale = ContentScale.Crop,
+                        fallbackImageUrl = "https://via.placeholder.com/40"
                     )
 
                     Spacer(modifier = Modifier.width(12.dp))
@@ -593,16 +616,15 @@ fun PostItem(
             if (!post.imageUrl.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
 
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(post.imageUrl)
-                        .crossfade(true)
-                        .build(),
+                LocalAwareAsyncImage(
+                    imageReference = post.imageUrl,
+                    imageStorageManager = imageStorageManager,
                     contentDescription = "Post image",
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(250.dp)
                         .clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.FillWidth
+                    contentScale = ContentScale.Crop
                 )
             }
 

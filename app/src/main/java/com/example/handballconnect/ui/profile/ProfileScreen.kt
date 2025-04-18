@@ -1,6 +1,7 @@
 package com.example.handballconnect.ui.profile
 
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.border
@@ -21,25 +22,27 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,19 +63,22 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.example.handballconnect.data.storage.ImageStorageManager
 import com.example.handballconnect.ui.auth.AuthViewModel
+import com.example.handballconnect.util.LocalAwareAsyncImage
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     authViewModel: AuthViewModel,
-    navController: NavController
+    navController: NavController,
+    imageStorageManager: ImageStorageManager // Inject this
 ) {
     val userData by authViewModel.userData.collectAsState()
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var isEditMode by remember { mutableStateOf(false) }
     var username by remember { mutableStateOf("") }
@@ -81,6 +87,8 @@ fun ProfileScreen(
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var showLogoutDialog by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
 
     // Position dropdown
     var isPositionMenuExpanded by remember { mutableStateOf(false) }
@@ -110,17 +118,41 @@ fun ProfileScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            selectedImageUri = it
-            isLoading = true
-            authViewModel.uploadProfileImage(
-                imageUri = it,
-                onSuccess = { imageUrl ->
-                    isLoading = false
-                },
-                onError = { error ->
-                    isLoading = false
+            Log.d("ProfileScreen", "Profile image selected: $uri")
+            try {
+                val contentResolver = context.contentResolver
+                val mimeType = contentResolver.getType(uri)
+                Log.d("ProfileScreen", "Image mime type: $mimeType")
+
+                selectedImageUri = uri
+                isLoading = true
+
+                authViewModel.uploadProfileImage(
+                    imageUri = uri,
+                    onSuccess = { imageUrl ->
+                        Log.d("ProfileScreen", "Profile image uploaded successfully: $imageUrl")
+                        isLoading = false
+                        // Show a success message
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Profile image updated successfully")
+                        }
+                    },
+                    onError = { error ->
+                        Log.e("ProfileScreen", "Failed to upload profile image: $error")
+                        isLoading = false
+                        // Show error to user
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Failed to update profile image: $error")
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e("ProfileScreen", "Error handling selected profile image: ${e.message}", e)
+                isLoading = false
+                scope.launch {
+                    snackbarHostState.showSnackbar("Failed to process the selected image")
                 }
-            )
+            }
         }
     }
 
@@ -134,6 +166,7 @@ fun ProfileScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Profile") },
@@ -158,7 +191,7 @@ fun ProfileScreen(
                     IconButton(
                         onClick = { showLogoutDialog = true }
                     ) {
-                        Icon(Icons.Default.ExitToApp, contentDescription = "Logout")
+                        Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout")
                     }
                 }
             )
@@ -183,17 +216,17 @@ fun ProfileScreen(
                         .padding(8.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(userData?.profileImageUrl?.takeIf { it.isNotEmpty() } ?: "https://via.placeholder.com/150")
-                            .crossfade(true)
-                            .build(),
+                    // Use LocalAwareAsyncImage for the profile image
+                    LocalAwareAsyncImage(
+                        imageReference = userData?.profileImageUrl,
+                        imageStorageManager = imageStorageManager,
                         contentDescription = "Profile picture",
                         modifier = Modifier
                             .size(150.dp)
                             .clip(CircleShape)
                             .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
-                        contentScale = ContentScale.Crop
+                        contentScale = ContentScale.Crop,
+                        fallbackImageUrl = "https://via.placeholder.com/150"
                     )
 
                     if (isEditMode) {
@@ -222,6 +255,9 @@ fun ProfileScreen(
                         )
                     }
                 }
+
+                // Rest of the profile screen content...
+                // (User info card, edit fields, etc.)
 
                 Spacer(modifier = Modifier.height(24.dp))
 
@@ -342,7 +378,7 @@ fun ProfileScreen(
                             )
 
                             Spacer(modifier = Modifier.height(16.dp))
-                            Divider()
+                            HorizontalDivider()
                             Spacer(modifier = Modifier.height(16.dp))
 
                             // Display user details

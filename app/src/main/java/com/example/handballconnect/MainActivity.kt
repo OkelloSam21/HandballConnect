@@ -15,6 +15,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.handballconnect.data.storage.ImageStorageManager
 import com.example.handballconnect.ui.auth.AuthViewModel
 import com.example.handballconnect.ui.auth.LoginScreen
 import com.example.handballconnect.ui.auth.RegisterScreen
@@ -22,9 +23,14 @@ import com.example.handballconnect.ui.main.MainScreen
 import com.example.handballconnect.ui.splash.SplashScreen
 import com.example.handballconnect.ui.theme.HandballConnectTheme
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var imageStorageManager: ImageStorageManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -33,7 +39,9 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    HandballConnectApp()
+                    HandballConnectApp(
+                        imageStorageManager = imageStorageManager
+                    )
                 }
             }
         }
@@ -41,10 +49,14 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun HandballConnectApp() {
+fun HandballConnectApp(
+    imageStorageManager: ImageStorageManager
+) {
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = hiltViewModel()
     val authState by authViewModel.authState.collectAsState()
+
+
 
     NavHost(
         navController = navController,
@@ -60,7 +72,7 @@ fun HandballConnectApp() {
             RegisterScreen(navController = navController, authViewModel = authViewModel)
         }
         composable("main") {
-            MainScreen(navController = navController, authViewModel = authViewModel)
+            MainScreen(navController = navController, authViewModel = authViewModel, imageStorageManager = imageStorageManager)
         }
     }
 }

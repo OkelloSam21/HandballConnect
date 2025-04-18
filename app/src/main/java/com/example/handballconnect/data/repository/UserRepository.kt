@@ -1,28 +1,25 @@
 package com.example.handballconnect.data.repository
 
 import android.net.Uri
+import android.util.Log
 import com.example.handballconnect.data.model.User
+import com.example.handballconnect.data.storage.ImageStorageManager
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.UserProfileChangeRequest
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class UserRepository @Inject constructor() {
+class UserRepository @Inject constructor(
+    private val imageStorageManager: ImageStorageManager
+) {
     private val auth = FirebaseAuth.getInstance()
-    private val storage = FirebaseStorage.getInstance().reference
     private val fireStore = FirebaseFirestore.getInstance()
     private val userCollection = fireStore.collection("users")
 
@@ -187,23 +184,53 @@ class UserRepository @Inject constructor() {
         }
     }
 
-    // Upload profile image
+    // Upload profile image with local storage
     suspend fun uploadProfileImage(imageUri: Uri): Result<String> {
         val userId = getCurrentUserId() ?: return Result.failure(Exception("User not logged in"))
 
         return try {
-            val filename = UUID.randomUUID().toString()
-            val ref = storage.child("profile_images/$userId/$filename")
+            Log.d("UserRepository", "Starting profile image upload for user: $userId")
 
-            ref.putFile(imageUri).await()
-            val downloadUrl = ref.downloadUrl.await().toString()
+            // Save image locally
+            val imageResult = imageStorageManager.saveProfileImage(userId, imageUri)
 
-            // Update user profile with the new image URL
-            userCollection.document(userId).update("profileImageUrl", downloadUrl).await()
+            imageResult.onSuccess { localReference ->
+                Log.d("UserRepository", "Profile image saved locally: $localReference")
 
-            Result.success(downloadUrl)
+                // Delete old image if exists
+                val userDoc = userCollection.document(userId).get().await()
+                val user = userDoc.toObject(User::class.java)
+
+                user?.profileImageUrl?.let { oldImageRef ->
+                    if (oldImageRef.startsWith(ImageStorageManager.LOCAL_URI_PREFIX)) {
+                        val imageDeleted = imageStorageManager.deleteImage(oldImageRef)
+                        Log.d("UserRepository", "Old profile image deletion: $imageDeleted")
+                    }
+                }
+
+                // Update user profile with the new local reference
+                userCollection.document(userId).update("profileImageUrl", localReference).await()
+                Log.d("UserRepository", "User profile updated with new image reference")
+
+                // Also update the Auth user's display name to trigger UI refreshes
+                val currentUser = auth.currentUser
+                if (currentUser != null) {
+                    val currentDisplayName = currentUser.displayName ?: ""
+                    val profileUpdates = UserProfileChangeRequest.Builder()
+                        .setDisplayName(currentDisplayName)
+                        .build()
+
+                    currentUser.updateProfile(profileUpdates).await()
+                    Log.d("UserRepository", "Firebase Auth user profile refreshed")
+                }
+
+                return Result.success(localReference)
+            }
+
+            return imageResult
         } catch (e: Exception) {
-            Result.failure(e)
+            Log.e("UserRepository", "Error uploading profile image: ${e.message}", e)
+            return Result.failure(e)
         }
     }
 

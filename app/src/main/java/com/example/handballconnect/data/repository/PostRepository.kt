@@ -4,31 +4,29 @@ import android.net.Uri
 import android.util.Log
 import com.example.handballconnect.data.model.Comment
 import com.example.handballconnect.data.model.Post
+import com.example.handballconnect.data.storage.ImageStorageManager
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class PostRepository @Inject constructor(
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val imageStorageManager: ImageStorageManager
 ) {
-
     private val fireStore = FirebaseFirestore.getInstance()
     private val postCollection = fireStore.collection("posts")
     private val likesCollection = fireStore.collection("likes")
     private val commentCollection = fireStore.collection("comments")
-    private val storage = FirebaseStorage.getInstance().reference
 
-    // Create a new post with improved error handling
+    // Create a new post with local image storage
     suspend fun createPost(text: String, imageUri: Uri? = null, isAnnouncement: Boolean = false): Result<Post> {
         val userId = userRepository.getCurrentUserId() ?: return Result.failure(Exception("User not logged in"))
 
@@ -57,14 +55,18 @@ class PostRepository @Inject constructor(
             // Generate a new post ID
             val postId = postCollection.document().id
 
-            // Upload image if available
+            // Save image locally if provided
             var imageUrl: String? = null
             if (imageUri != null) {
-                val filename = UUID.randomUUID().toString()
-                val ref = storage.child("post_images/$postId/$filename")
-
-                ref.putFile(imageUri).await()
-                imageUrl = ref.downloadUrl.await().toString()
+                Log.d("PostRepository", "Processing image for post: $postId")
+                val imageResult = imageStorageManager.savePostImage(postId, imageUri)
+                imageResult.onSuccess { localReference ->
+                    imageUrl = localReference
+                    Log.d("PostRepository", "Image saved locally with reference: $localReference")
+                }.onFailure { e ->
+                    Log.e("PostRepository", "Failed to save image locally: ${e.message}")
+                    // Continue without the image
+                }
             }
 
             // Create the post object
@@ -76,11 +78,13 @@ class PostRepository @Inject constructor(
                 text = text,
                 imageUrl = imageUrl,
                 isAnnouncement = isAnnouncement,
-                timestamp = System.currentTimeMillis()  // Ensure timestamp is set
+                timestamp = System.currentTimeMillis()
             )
 
             // Save the post to Firestore
+            Log.d("PostRepository", "Saving post to Firestore with ID: $postId")
             postCollection.document(postId).set(post).await()
+            Log.d("PostRepository", "Post saved successfully")
 
             Result.success(post)
         } catch (e: Exception) {
@@ -88,6 +92,66 @@ class PostRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+    // Delete a post - updated to delete local images
+    suspend fun deletePost(postId: String): Result<Unit> {
+        val userId = userRepository.getCurrentUserId() ?: return Result.failure(Exception("User not logged in"))
+
+        return try {
+            // Get current user data to check if admin
+            val currentUserFlow = userRepository.getCurrentUserData()
+            var isAdmin = false
+            var isPostOwner = false
+
+            // Collect user data from flow (just once)
+            currentUserFlow.collect { result ->
+                result.onSuccess { user ->
+                    isAdmin = user.isAdmin
+                }
+                return@collect
+            }
+
+            // Check if user is the post owner
+            val postDoc = postCollection.document(postId).get().await()
+            val post = postDoc.toObject(Post::class.java)
+
+            if (post != null) {
+                isPostOwner = post.userId == userId
+            }
+
+            if (!isAdmin && !isPostOwner) {
+                return Result.failure(Exception("You don't have permission to delete this post"))
+            }
+
+            // Delete post image if exists
+            post?.imageUrl?.let { imageRef ->
+                if (imageRef.startsWith(ImageStorageManager.LOCAL_URI_PREFIX)) {
+                    val imageDeleted = imageStorageManager.deleteImage(imageRef)
+                    Log.d("PostRepository", "Image deletion for post $postId: $imageDeleted")
+                }
+            }
+
+            // Delete post
+            postCollection.document(postId).delete().await()
+
+            // Delete comments for this post
+            val commentsQuery = commentCollection.whereEqualTo("postId", postId).get().await()
+            commentsQuery.documents.forEach { doc ->
+                commentCollection.document(doc.id).delete().await()
+            }
+
+            // Delete likes for this post
+            val likesQuery = likesCollection.whereEqualTo("postId", postId).get().await()
+            likesQuery.documents.forEach { doc ->
+                likesCollection.document(doc.id).delete().await()
+            }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     // Like a post
     suspend fun likePost(postId: String): Result<Unit> {
         val userId = userRepository.getCurrentUserId() ?: return Result.failure(Exception("User not logged in"))
@@ -171,8 +235,8 @@ class PostRepository @Inject constructor(
 
             // Collect user data from flow (just once)
             currentUserFlow.let { result ->
-                    username = result?.email ?: ""
-//                    userProfileImageUrl = res
+                username = result?.email ?: ""
+                // userProfileImageUrl can be retrieved in a similar way if needed
             }
 
             // Generate a new comment ID
@@ -229,64 +293,6 @@ class PostRepository @Inject constructor(
         }
     }
 
-    // Delete a post - update to use Firestore
-    suspend fun deletePost(postId: String): Result<Unit> {
-        val userId = userRepository.getCurrentUserId() ?: return Result.failure(Exception("User not logged in"))
-
-        return try {
-            // Get current user data to check if admin
-            val currentUserFlow = userRepository.getCurrentUserData()
-            var isAdmin = false
-            var isPostOwner = false
-
-            // Collect user data from flow (just once)
-            currentUserFlow.collect { result ->
-                result.onSuccess { user ->
-                    isAdmin = user.isAdmin
-                }
-                return@collect
-            }
-
-            // Check if user is the post owner
-            val postDoc = postCollection.document(postId).get().await()
-            val post = postDoc.toObject(Post::class.java)
-
-            if (post != null) {
-                isPostOwner = post.userId == userId
-            }
-
-            if (!isAdmin && !isPostOwner) {
-                return Result.failure(Exception("You don't have permission to delete this post"))
-            }
-
-            // Delete post
-            postCollection.document(postId).delete().await()
-
-            // Delete comments for this post
-            val commentsQuery = commentCollection.whereEqualTo("postId", postId).get().await()
-            commentsQuery.documents.forEach { doc ->
-                commentCollection.document(doc.id).delete().await()
-            }
-
-            // Delete likes for this post
-            val likesQuery = likesCollection.whereEqualTo("postId", postId).get().await()
-            likesQuery.documents.forEach { doc ->
-                likesCollection.document(doc.id).delete().await()
-            }
-
-            // Delete post image if exists
-            post?.imageUrl?.let {
-                if (it.isNotEmpty()) {
-                    storage.child("post_images/$postId").delete().await()
-                }
-            }
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
     fun getFeedPosts(): Flow<Result<List<Post>>> = callbackFlow {
         val listenerRegistration = postCollection
             .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
@@ -333,5 +339,4 @@ class PostRepository @Inject constructor(
             postListener.remove()
         }
     }
-
 }
