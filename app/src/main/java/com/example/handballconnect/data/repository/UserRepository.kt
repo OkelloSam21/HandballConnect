@@ -104,26 +104,67 @@ class UserRepository @Inject constructor(
     // Get current user data
     fun getCurrentUserData(): Flow<Result<User>> = callbackFlow {
         val userId = getCurrentUserId() ?: run {
+            Log.e("UserRepository", "User not logged in")
             trySend(Result.failure(Exception("User not logged in")))
             close()
             return@callbackFlow
         }
 
+        Log.d("UserRepository", "Fetching user data for ID: $userId")
+
         val listenerRegistration = userCollection.document(userId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
+                    Log.e("UserRepository", "Error fetching user data: ${error.message}")
                     trySend(Result.failure(error))
                     return@addSnapshotListener
                 }
 
                 if (snapshot != null && snapshot.exists()) {
-                    val user = snapshot.toObject(User::class.java)
-                    if (user != null) {
+                    try {
+                        // Log the raw document data for debugging
+                        Log.d("UserRepository", "Raw document data: ${snapshot.data}")
+
+                        // Check specifically for the admin field
+                        val adminValue = snapshot.getBoolean("admin")
+                        Log.d("UserRepository", "Admin field from direct get: $adminValue")
+
+                        // Create a User object with correct field mapping
+                        val user = User(
+                            userId = snapshot.id,
+                            username = snapshot.getString("username") ?: "",
+                            email = snapshot.getString("email") ?: "",
+                            profileImageUrl = snapshot.getString("profileImageUrl") ?: "",
+                            position = snapshot.getString("position") ?: "",
+                            experience = snapshot.getString("experience") ?: "",
+                            // Important: Use the admin field from Firestore
+                            isAdmin = adminValue ?: false,
+                            createdAt = snapshot.getLong("createdAt") ?: 0
+                        )
+
+                        Log.d("UserRepository", "Mapped to User object: $user")
+                        Log.d("UserRepository", "User is admin: ${user.isAdmin}")
+
                         trySend(Result.success(user))
-                    } else {
-                        trySend(Result.failure(Exception("User data is null")))
+                    } catch (e: Exception) {
+                        Log.e("UserRepository", "Error mapping document to User object: ${e.message}", e)
+
+                        // Fallback: Try to use Firestore's toObject method
+                        try {
+                            val fallbackUser = snapshot.toObject(User::class.java)
+                            if (fallbackUser != null) {
+                                Log.d("UserRepository", "Fallback User via toObject: $fallbackUser, isAdmin: ${fallbackUser.isAdmin}")
+                                trySend(Result.success(fallbackUser))
+                            } else {
+                                trySend(Result.failure(Exception("Failed to map user data")))
+                            }
+                        } catch (fallbackError: Exception) {
+                            Log.e("UserRepository", "Fallback mapping also failed: ${fallbackError.message}", fallbackError)
+                            trySend(Result.failure(fallbackError))
+                        }
                     }
                 } else {
+                    Log.e("UserRepository", "User document doesn't exist")
                     trySend(Result.failure(Exception("User not found")))
                 }
             }
@@ -263,6 +304,60 @@ class UserRepository @Inject constructor(
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Checks and fixes the admin status for a user
+     * This is helpful when there might be a field name mismatch between "admin" and "isAdmin"
+     */
+    suspend fun checkAndFixAdminStatus(userId: String? = null): Result<Boolean> {
+        // Use the provided userId or the current user's ID
+        val targetUserId = userId ?: getCurrentUserId() ?:
+        return Result.failure(Exception("User not logged in"))
+
+        try {
+            Log.d("UserRepository", "Checking admin status for user: $targetUserId")
+
+            // Get the user document
+            val userDoc = userCollection.document(targetUserId).get().await()
+
+            if (!userDoc.exists()) {
+                Log.e("UserRepository", "User document doesn't exist")
+                return Result.failure(Exception("User not found"))
+            }
+
+            // Log all fields for debugging
+            Log.d("UserRepository", "User document data: ${userDoc.data}")
+
+            // Check for "admin" field
+            val adminValue = userDoc.getBoolean("admin")
+            Log.d("UserRepository", "Admin field value: $adminValue")
+
+            // Check for "isAdmin" field
+            val isAdminValue = userDoc.getBoolean("isAdmin")
+            Log.d("UserRepository", "isAdmin field value: $isAdminValue")
+
+            // Determine the actual admin status
+            val shouldBeAdmin = adminValue ?: isAdminValue ?: false
+
+            // If we have conflicting values or a missing field, fix it
+            if (adminValue != isAdminValue || adminValue == null || isAdminValue == null) {
+                Log.d("UserRepository", "Fixing admin status to be consistent: $shouldBeAdmin")
+
+                val updates = hashMapOf<String, Any>(
+                    "admin" to shouldBeAdmin,
+                    "isAdmin" to shouldBeAdmin
+                )
+
+                userCollection.document(targetUserId).update(updates).await()
+                Log.d("UserRepository", "Updated admin fields: $updates")
+            }
+
+            return Result.success(shouldBeAdmin)
+        } catch (e: Exception) {
+            Log.e("UserRepository", "Error checking/fixing admin status: ${e.message}", e)
+            return Result.failure(e)
         }
     }
 }

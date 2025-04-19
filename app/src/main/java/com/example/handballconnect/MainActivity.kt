@@ -56,8 +56,6 @@ fun HandballConnectApp(
     val authViewModel: AuthViewModel = hiltViewModel()
     val authState by authViewModel.authState.collectAsState()
 
-
-
     NavHost(
         navController = navController,
         startDestination = "splash"

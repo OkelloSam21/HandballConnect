@@ -21,10 +21,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
@@ -63,6 +63,8 @@ import coil.request.ImageRequest
 import com.example.handballconnect.data.model.Conversation
 import com.example.handballconnect.data.model.Message
 import com.example.handballconnect.data.model.User
+import com.example.handballconnect.data.storage.ImageStorageManager
+import com.example.handballconnect.util.LocalAwareAsyncImage
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -71,7 +73,8 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessagesScreen(
-    messageViewModel: MessageViewModel
+    messageViewModel: MessageViewModel,
+    imageStorageManager: ImageStorageManager
 ) {
     val conversationsState by messageViewModel.conversationsState.collectAsState()
     val selectedConversation by messageViewModel.selectedConversation.collectAsState()
@@ -137,7 +140,7 @@ fun MessagesScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = { showChatView = false }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -253,7 +256,7 @@ fun MessagesScreen(
                                     }
                                 }
                             ) {
-                                Icon(Icons.Default.Send, contentDescription = "Send")
+                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                             }
                         }
                     }
@@ -375,7 +378,8 @@ fun MessagesScreen(
 //                                                    }
 //                                                }
                                             )
-                                        }
+                                        },
+                                        imageStorageManager = imageStorageManager
                                     )
                                 }
                             }
@@ -405,8 +409,6 @@ fun MessagesScreen(
                                 )
                             }
                         }
-
-                        else -> {}
                     }
                 }
             }
@@ -508,7 +510,8 @@ fun ConversationItem(
 @Composable
 fun UserItem(
     user: User,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    imageStorageManager: ImageStorageManager
 ) {
     Row(
         modifier = Modifier
@@ -518,18 +521,16 @@ fun UserItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         // User profile image
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(user.profileImageUrl.takeIf { it.isNotEmpty() }
-                    ?: "https://via.placeholder.com/40")
-                .crossfade(true)
-                .build(),
-            contentDescription = "User profile",
+        LocalAwareAsyncImage(
+            imageReference = user.profileImageUrl,
+            imageStorageManager = imageStorageManager,
+            contentDescription = user.username,
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
                 .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape),
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Crop,
+            fallbackImageUrl = "https://via.placeholder.com/40"
         )
 
         Spacer(modifier = Modifier.width(16.dp))
