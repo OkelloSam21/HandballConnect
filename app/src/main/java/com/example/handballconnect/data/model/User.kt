@@ -30,11 +30,13 @@ data class User(
     @PropertyName("admin")
     val isAdmin: Boolean = false,
 
+    var isDisabled: Boolean = false,
+
     @PropertyName("createdAt")
     val createdAt: Long = Date().time
 ) {
     // Empty constructor needed for Firebase
-    constructor() : this("", "", "", "", "", "", false, 0)
+    constructor() : this("", "", "", "", "", "", false, false,0)
 
     fun toMap(): Map<String, Any?> {
         return mapOf(
@@ -45,6 +47,7 @@ data class User(
             "position" to position,
             "experience" to experience,
             "admin" to isAdmin,
+            "isDisabled" to isDisabled,
             "createdAt" to createdAt
         )
     }

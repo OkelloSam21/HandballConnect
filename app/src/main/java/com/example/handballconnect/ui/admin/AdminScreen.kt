@@ -1,6 +1,5 @@
 package com.example.handballconnect.ui.admin
 
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,17 +13,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,14 +48,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.example.handballconnect.data.model.User
 import kotlinx.coroutines.launch
 
@@ -169,11 +162,23 @@ fun AdminScreen(
                                     modifier = Modifier.fillMaxSize(),
                                     contentPadding = paddingValues
                                 ) {
+                                    // In AdminScreen.kt, update items section:
                                     items(users) { user ->
                                         UserManagementItem(
                                             user = user,
                                             onToggleAdmin = { isAdmin ->
-                                                adminViewModel.updateUserAdminStatus(user.userId, isAdmin)
+                                                if (isAdmin) {
+                                                    adminViewModel.upgradeToAdmin(user.userId)
+                                                } else {
+                                                    adminViewModel.downgradeFromAdmin(user.userId)
+                                                }
+                                            },
+                                            onToggleDisabled = { isDisabled ->
+                                                if (isDisabled) {
+                                                    adminViewModel.disableUser(user.userId)
+                                                } else {
+                                                    adminViewModel.enableUser(user.userId)
+                                                }
                                             }
                                         )
                                     }
@@ -276,7 +281,7 @@ fun AdminScreen(
                                 strokeWidth = 2.dp
                             )
                         } else {
-                            Icon(Icons.Default.Send, contentDescription = "Send")
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Post Announcement")
                         }
@@ -290,7 +295,8 @@ fun AdminScreen(
 @Composable
 fun UserManagementItem(
     user: User,
-    onToggleAdmin: (Boolean) -> Unit
+    onToggleAdmin: (Boolean) -> Unit,
+    onToggleDisabled: (Boolean) -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -302,26 +308,15 @@ fun UserManagementItem(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
+            // User info row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // User profile image
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(user.profileImageUrl.takeIf { it.isNotEmpty() } ?: "https://via.placeholder.com/50")
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = "User profile",
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clip(CircleShape)
-                        .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape),
-                    contentScale = ContentScale.Crop
-                )
-                
+                // Profile image - existing code...
+
                 Spacer(modifier = Modifier.width(16.dp))
-                
+
                 Column(
                     modifier = Modifier.weight(1f)
                 ) {
@@ -330,13 +325,13 @@ fun UserManagementItem(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    
+
                     Text(
                         text = user.email,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    
+
                     if (user.position.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
@@ -345,7 +340,16 @@ fun UserManagementItem(
                         )
                     }
                 }
-                
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // User management controls
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 // Admin toggle
                 Row(
                     verticalAlignment = Alignment.CenterVertically
@@ -355,9 +359,13 @@ fun UserManagementItem(
                         contentDescription = "Admin",
                         tint = if (user.isAdmin) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    
+
                     Spacer(modifier = Modifier.width(8.dp))
-                    
+
+                    Text("Admin")
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     Switch(
                         checked = user.isAdmin,
                         onCheckedChange = { isAdmin ->
@@ -365,48 +373,66 @@ fun UserManagementItem(
                         }
                     )
                 }
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // Additional user info
-            if (user.experience.isNotEmpty()) {
-                Divider(modifier = Modifier.padding(vertical = 8.dp))
-                
+
+                // Disable toggle
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Experience Level:",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold
+                    Icon(
+                        imageVector = Icons.Default.Block,
+                        contentDescription = "Disable user",
+                        tint = if (user.isDisabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    
+
                     Spacer(modifier = Modifier.width(8.dp))
-                    
-                    Text(
-                        text = user.experience,
-                        style = MaterialTheme.typography.bodyMedium
+
+                    Text("Disabled")
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Switch(
+                        checked = user.isDisabled,
+                        onCheckedChange = { newDisabledState ->
+                            onToggleDisabled(newDisabledState)
+                        }
                     )
                 }
             }
-            
-            // Admin status badge
-            if (user.isAdmin) {
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(4.dp),
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Text(
-                        text = "Admin",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+
+            // Status badges
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                if (user.isAdmin) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Text(
+                            text = "Admin",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                if (user.isDisabled) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "Disabled",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
         }
