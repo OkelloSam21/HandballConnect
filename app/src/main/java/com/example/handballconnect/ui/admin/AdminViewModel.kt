@@ -85,13 +85,87 @@ class AdminViewModel @Inject constructor(
             }
         }
     }
-    
+
+    // In AdminViewModel.kt
+    fun upgradeToAdmin(userId: String) {
+        _adminOperationState.value = AdminOperationState.Loading
+
+        viewModelScope.launch {
+            val result = userRepository.setUserAdminStatus(userId, true)
+
+            result.onSuccess {
+                _adminOperationState.value = AdminOperationState.Success("User promoted to admin")
+                loadUsers() // Refresh user list
+            }.onFailure { exception ->
+                _adminOperationState.value = AdminOperationState.Error(exception.message ?: "Failed to promote user")
+            }
+        }
+    }
+
+    fun downgradeFromAdmin(userId: String) {
+        _adminOperationState.value = AdminOperationState.Loading
+
+        viewModelScope.launch {
+            val result = userRepository.setUserAdminStatus(userId, false)
+
+            result.onSuccess {
+                _adminOperationState.value = AdminOperationState.Success("Admin privileges removed")
+                loadUsers() // Refresh user list
+            }.onFailure { exception ->
+                _adminOperationState.value = AdminOperationState.Error(exception.message ?: "Failed to remove admin privileges")
+            }
+        }
+    }
+
+    fun disableUser(userId: String) {
+        _adminOperationState.value = AdminOperationState.Loading
+        viewModelScope.launch {
+            val result = userRepository.setUserDisabledStatus(userId, true)
+            result.onSuccess {
+                // 1. Update _usersState *immediately*
+                updateUserInList(userId, isDisabled = true)
+                _adminOperationState.value = AdminOperationState.Success("User disabled")
+            }.onFailure { exception ->
+                _adminOperationState.value = AdminOperationState.Error(exception.message ?: "Failed to disable user")
+            }
+        }
+    }
+
+    fun enableUser(userId: String) {
+        _adminOperationState.value = AdminOperationState.Loading
+        viewModelScope.launch {
+            val result = userRepository.setUserDisabledStatus(userId, false)
+            result.onSuccess {
+                // 1. Update _usersState *immediately*
+                updateUserInList(userId, isDisabled = false)
+                _adminOperationState.value = AdminOperationState.Success("User enabled")
+            }.onFailure { exception ->
+                _adminOperationState.value = AdminOperationState.Error(exception.message ?: "Failed to enable user")
+            }
+        }
+    }
+
+    // Helper function to update the user in the list
+    private fun updateUserInList(userId: String, isDisabled: Boolean) {
+        val currentState = _usersState.value
+        if (currentState is UsersState.Success) {
+            val updatedUsers = currentState.users.map { user ->
+                if (user.userId == userId) {
+                    user.copy(isDisabled = isDisabled)
+                } else {
+                    user
+                }
+            }
+            _usersState.value = UsersState.Success(updatedUsers)
+        }
+    }
+
     // Get current user admin status
     fun isCurrentUserAdmin(): Boolean {
         var isAdmin = false
         viewModelScope.launch {
             userRepository.getCurrentUserData().collect { result ->
-                isAdmin = result.getOrNull()?.isAdmin ?: false
+                isAdmin = result.getOrNull()?.isAdmin == true
             }
         }
         return isAdmin
