@@ -63,15 +63,29 @@ class AuthViewModel @Inject constructor(
     }
     
     // Login user
+    // In AuthViewModel.kt, modify loginUser
     fun loginUser(email: String, password: String) {
         _authState.value = AuthState.Loading
-        
+
         viewModelScope.launch {
             val result = userRepository.loginUser(email, password)
-            
-            result.onSuccess {
-                _authState.value = AuthState.Authenticated
-                fetchCurrentUserData()
+
+            result.onSuccess { user ->
+                // Check if user is disabled
+                userRepository.getCurrentUserData().collect { userData ->
+                    userData.onSuccess { user ->
+                        if (user.isDisabled) {
+                            _authState.value = AuthState.Error("Your account has been disabled. Please contact admin.")
+                            userRepository.logoutUser() // Force logout
+                        } else {
+                            _authState.value = AuthState.Authenticated
+                            fetchCurrentUserData()
+                        }
+                    }.onFailure {
+                        _authState.value = AuthState.Authenticated
+                        fetchCurrentUserData()
+                    }
+                }
             }.onFailure { exception ->
                 _authState.value = AuthState.Error(exception.message ?: "Login failed")
             }

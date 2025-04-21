@@ -300,64 +300,33 @@ class UserRepository @Inject constructor(
     // Update user admin status
     suspend fun updateUserAdminStatus(userId: String, isAdmin: Boolean): Result<Unit> {
         return try {
-            userCollection.document(userId).update("isAdmin", isAdmin).await()
+            userCollection.document(userId).update("admin", isAdmin).await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    /**
-     * Checks and fixes the admin status for a user
-     * This is helpful when there might be a field name mismatch between "admin" and "isAdmin"
-     */
-    suspend fun checkAndFixAdminStatus(userId: String? = null): Result<Boolean> {
-        // Use the provided userId or the current user's ID
-        val targetUserId = userId ?: getCurrentUserId() ?:
-        return Result.failure(Exception("User not logged in"))
-
-        try {
-            Log.d("UserRepository", "Checking admin status for user: $targetUserId")
-
-            // Get the user document
-            val userDoc = userCollection.document(targetUserId).get().await()
-
-            if (!userDoc.exists()) {
-                Log.e("UserRepository", "User document doesn't exist")
-                return Result.failure(Exception("User not found"))
-            }
-
-            // Log all fields for debugging
-            Log.d("UserRepository", "User document data: ${userDoc.data}")
-
-            // Check for "admin" field
-            val adminValue = userDoc.getBoolean("admin")
-            Log.d("UserRepository", "Admin field value: $adminValue")
-
-            // Check for "isAdmin" field
-            val isAdminValue = userDoc.getBoolean("isAdmin")
-            Log.d("UserRepository", "isAdmin field value: $isAdminValue")
-
-            // Determine the actual admin status
-            val shouldBeAdmin = adminValue ?: isAdminValue ?: false
-
-            // If we have conflicting values or a missing field, fix it
-            if (adminValue != isAdminValue || adminValue == null || isAdminValue == null) {
-                Log.d("UserRepository", "Fixing admin status to be consistent: $shouldBeAdmin")
-
-                val updates = hashMapOf<String, Any>(
-                    "admin" to shouldBeAdmin,
-                    "isAdmin" to shouldBeAdmin
-                )
-
-                userCollection.document(targetUserId).update(updates).await()
-                Log.d("UserRepository", "Updated admin fields: $updates")
-            }
-
-            return Result.success(shouldBeAdmin)
+    // In UserRepository.kt
+    suspend fun setUserAdminStatus(userId: String, isAdmin: Boolean): Result<Unit> {
+        return try {
+            userCollection.document(userId).update("admin", isAdmin).await()
+            Result.success(Unit)
         } catch (e: Exception) {
-            Log.e("UserRepository", "Error checking/fixing admin status: ${e.message}", e)
-            return Result.failure(e)
+            Log.e("UserRepository", "Error updating admin status: ${e.message}")
+            Result.failure(e)
         }
     }
+
+    suspend fun setUserDisabledStatus(userId: String, isDisabled: Boolean): Result<Unit> {
+        return try {
+            userCollection.document(userId).update("isDisabled", isDisabled).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("UserRepository", "Error updating disabled status: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+
 }
