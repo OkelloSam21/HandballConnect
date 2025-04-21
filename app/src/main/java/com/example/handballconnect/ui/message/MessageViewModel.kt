@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.handballconnect.data.model.Conversation
 import com.example.handballconnect.data.model.Message
-import com.example.handballconnect.data.model.User
 import com.example.handballconnect.data.repository.MessageRepository
 import com.example.handballconnect.data.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,8 +21,8 @@ class MessageViewModel @Inject constructor(
     private val userRepository: UserRepository
 ) : ViewModel() {
 
-    private val _conversationsState =
-        MutableStateFlow<ConversationsState>(ConversationsState.Loading)
+    // Conversations state
+    private val _conversationsState = MutableStateFlow<ConversationsState>(ConversationsState.Loading)
     val conversationsState: StateFlow<ConversationsState> = _conversationsState.asStateFlow()
 
     // Currently selected conversation
@@ -35,14 +34,12 @@ class MessageViewModel @Inject constructor(
     val messagesState: StateFlow<MessagesState> = _messagesState.asStateFlow()
 
     // Message sending state
-    private val _messageSendState = MutableStateFlow<MessageSendState>(MessageSendState.Initial)
-    val messageSendState: StateFlow<MessageSendState> = _messageSendState.asStateFlow()
+    private val _messageSendState = MutableStateFlow<ChatState>(ChatState.Initial)
+    val messageSendState: StateFlow<ChatState> = _messageSendState.asStateFlow()
 
     // Users list for starting new conversations
     private val _usersState = MutableStateFlow<UsersState>(UsersState.Loading)
     val usersState: StateFlow<UsersState> = _usersState.asStateFlow()
-
-
 
     init {
         Log.d("MessageViewModel", "Initializing and loading conversations")
@@ -82,34 +79,6 @@ class MessageViewModel @Inject constructor(
         }
     }
 
-    // Send a text message with improved error handling
-    fun sendTextMessage(text: String) {
-        val conversationId = _selectedConversation.value?.conversationId ?: return
-
-        _messageSendState.value = MessageSendState.Sending
-
-        viewModelScope.launch {
-            try {
-                Log.d("MessageViewModel", "Sending message in conversation: $conversationId")
-                val result = messageRepository.sendTextMessage(conversationId, text)
-
-                result.onSuccess {
-                    Log.d("MessageViewModel", "Message sent successfully")
-                    _messageSendState.value = MessageSendState.Success
-                }.onFailure { exception ->
-                    Log.e("MessageViewModel", "Failed to send message: ${exception.message}")
-                    _messageSendState.value =
-                        MessageSendState.Error(exception.message ?: "Failed to send message")
-                }
-            } catch (e: Exception) {
-                Log.e("MessageViewModel", "Exception sending message: ${e.message}")
-                _messageSendState.value =
-                    MessageSendState.Error(e.message ?: "An unexpected error occurred")
-            }
-        }
-    }
-
-
     // Select a conversation and load its messages
     fun selectConversation(conversation: Conversation) {
         _selectedConversation.value = conversation
@@ -121,38 +90,47 @@ class MessageViewModel @Inject constructor(
         _messagesState.value = MessagesState.Loading
 
         viewModelScope.launch {
-            messageRepository.getMessagesForConversation(conversationId).collect { result ->
-                result.onSuccess { messages ->
-                    if (messages.isEmpty()) {
-                        _messagesState.value = MessagesState.Empty
-                    } else {
-                        _messagesState.value = MessagesState.Success(messages)
+            try {
+                // Load conversation data if not already loaded
+                if (_selectedConversation.value == null || _selectedConversation.value?.conversationId != conversationId) {
+                    val conversationResult = messageRepository.getConversationById(conversationId)
+                    conversationResult.onSuccess { conversation ->
+                        _selectedConversation.value = conversation
                     }
-                }.onFailure { exception ->
-                    _messagesState.value =
-                        MessagesState.Error(exception.message ?: "Failed to load messages")
                 }
+
+                // Load messages
+                messageRepository.getMessagesForConversation(conversationId).collect { result ->
+                    result.onSuccess { messages ->
+                        if (messages.isEmpty()) {
+                            _messagesState.value = MessagesState.Empty
+                        } else {
+                            _messagesState.value = MessagesState.Success(messages)
+                        }
+                    }.onFailure { exception ->
+                        _messagesState.value =
+                            MessagesState.Error(exception.message ?: "Failed to load messages")
+                    }
+                }
+            } catch (e: Exception) {
+                _messagesState.value =
+                    MessagesState.Error(e.message ?: "An unexpected error occurred")
             }
         }
     }
 
+    // Get other participant's name in current conversation
+    fun getOtherParticipantName(): String {
+        val conversation = _selectedConversation.value ?: return ""
+        val currentUserId = userRepository.getCurrentUserId() ?: return ""
 
-    // Send an image message
-    fun sendImageMessage(imageUri: Uri) {
-        val conversationId = _selectedConversation.value?.conversationId ?: return
+        // Get the name of the other participant
+        return conversation.participantNames[getOtherParticipantId(conversation, currentUserId)] ?: ""
+    }
 
-        _messageSendState.value = MessageSendState.Sending
-
-        viewModelScope.launch {
-            val result = messageRepository.sendImageMessage(conversationId, imageUri)
-
-            result.onSuccess {
-                _messageSendState.value = MessageSendState.Success
-            }.onFailure { exception ->
-                _messageSendState.value =
-                    MessageSendState.Error(exception.message ?: "Failed to send image")
-            }
-        }
+    // Helper function to get the other participant's ID
+    private fun getOtherParticipantId(conversation: Conversation, currentUserId: String): String {
+        return conversation.participantIds.firstOrNull { it != currentUserId } ?: ""
     }
 
     // Load users for starting new conversations
@@ -181,76 +159,95 @@ class MessageViewModel @Inject constructor(
 
     // Start or continue a conversation with a user
     fun startConversation(otherUserId: String) {
-        _conversationsState.value = ConversationsState.Loading
-
         viewModelScope.launch {
             try {
-                Log.d("ConversationViewModel", "Starting conversation with user: $otherUserId")
+                Log.d("MessageViewModel", "Starting conversation with user: $otherUserId")
                 val result = messageRepository.getOrCreateConversation(otherUserId)
 
                 result.onSuccess { conversation ->
-                    Log.d("ConversationViewModel", "Conversation started successfully")
+                    Log.d("MessageViewModel", "Conversation started successfully")
                     _selectedConversation.value = conversation
-                    _conversationsState.value = ConversationsState.Success(listOf(conversation))
                     loadMessages(conversation.conversationId)
                 }.onFailure { exception ->
-                    Log.e("ConversationViewModel", "Failed to start conversation: ${exception.message}")
-//                    _conversationsState.value = _conversationsState.Error(
-//                        exception.message ?: "Failed to start conversation"
-//                    )
+                    Log.e("MessageViewModel", "Failed to start conversation: ${exception.message}")
+                    throw exception // Re-throw to be caught by the UI
                 }
             } catch (e: Exception) {
-                Log.e("ConversationViewModel", "Exception starting conversation: ${e.message}", e)
-//                _conversationsState.value = _conversationsState.Error(
-//                    e.message ?: "An unexpected error occurred"
-//                )
+                Log.e("MessageViewModel", "Exception starting conversation: ${e.message}", e)
+                throw e // Re-throw to be caught by the UI
+            }
+        }
+    }
+
+    // Send a text message
+    fun sendTextMessage(text: String, conversationId: String) {
+        _messageSendState.value = ChatState.Sending
+
+        viewModelScope.launch {
+            try {
+                val result = messageRepository.sendTextMessage(conversationId, text)
+
+                result.onSuccess {
+                    _messageSendState.value = ChatState.Success
+                }.onFailure { exception ->
+                    _messageSendState.value =
+                        ChatState.Error(exception.message ?: "Failed to send message")
+                }
+            } catch (e: Exception) {
+                _messageSendState.value =
+                    ChatState.Error(e.message ?: "An unexpected error occurred")
+            }
+        }
+    }
+
+    // Send an image message
+    fun sendImageMessage(imageUri: Uri, conversationId: String) {
+        _messageSendState.value = ChatState.Sending
+
+        viewModelScope.launch {
+            try {
+                val result = messageRepository.sendImageMessage(conversationId, imageUri)
+
+                result.onSuccess {
+                    _messageSendState.value = ChatState.Success
+                }.onFailure { exception ->
+                    _messageSendState.value =
+                        ChatState.Error(exception.message ?: "Failed to send image")
+                }
+            } catch (e: Exception) {
+                _messageSendState.value =
+                    ChatState.Error(e.message ?: "An unexpected error occurred")
             }
         }
     }
 
     // Reset message send state
     fun resetMessageSendState() {
-        _messageSendState.value = MessageSendState.Initial
+        _messageSendState.value = ChatState.Initial
     }
+}
 
-    // Get other participant's name in current conversation
-    fun getOtherParticipantName(): String {
-        val conversation = _selectedConversation.value ?: return ""
-        val currentUserId = userRepository.getCurrentUserId() ?: return ""
-        return conversation.getOtherParticipantName(currentUserId)
-    }
+// Conversations state sealed class
+sealed class ConversationsState {
+    object Loading : ConversationsState()
+    object Empty : ConversationsState()
+    data class Success(val conversations: List<Conversation>) : ConversationsState()
+    data class Error(val message: String) : ConversationsState()
+}
 
+// Messages state sealed class
+sealed class MessagesState {
+    object Initial : MessagesState()
+    object Loading : MessagesState()
+    object Empty : MessagesState()
+    data class Success(val messages: List<Message>) : MessagesState()
+    data class Error(val message: String) : MessagesState()
+}
 
-    // Conversations state sealed class
-    sealed class ConversationsState {
-        object Loading : ConversationsState()
-        object Empty : ConversationsState()
-        data class Success(val conversations: List<Conversation>) : ConversationsState()
-        data class Error(val message: String) : ConversationsState()
-    }
-
-    // Messages state sealed class
-    sealed class MessagesState {
-        object Initial : MessagesState()
-        object Loading : MessagesState()
-        object Empty : MessagesState()
-        data class Success(val messages: List<Message>) : MessagesState()
-        data class Error(val message: String) : MessagesState()
-    }
-
-    // Message send state sealed class
-    sealed class MessageSendState {
-        object Initial : MessageSendState()
-        object Sending : MessageSendState()
-        object Success : MessageSendState()
-        data class Error(val message: String) : MessageSendState()
-    }
-
-    // Users state sealed class
-    sealed class UsersState {
-        object Loading : UsersState()
-        object Empty : UsersState()
-        data class Success(val users: List<User>) : UsersState()
-        data class Error(val message: String) : UsersState()
-    }
+// Message send state sealed class
+sealed class ChatState {
+    object Initial : ChatState()
+    object Sending : ChatState()
+    object Success : ChatState()
+    data class Error(val message: String) : ChatState()
 }
