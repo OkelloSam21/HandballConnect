@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Edit
@@ -73,7 +74,8 @@ import kotlinx.coroutines.launch
 fun ProfileScreen(
     authViewModel: AuthViewModel,
     navController: NavController,
-    imageStorageManager: ImageStorageManager // Inject this
+    navigateBack: () -> Unit,
+    imageStorageManager: ImageStorageManager
 ) {
     val userData by authViewModel.userData.collectAsState()
     val scope = rememberCoroutineScope()
@@ -170,6 +172,11 @@ fun ProfileScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Profile") },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navigateBack
+                    ) { Icon(Icons.Filled.ArrowBackIosNew, contentDescription = "Navigate back") }
+                },
                 actions = {
                     if (isEditMode) {
                         IconButton(
