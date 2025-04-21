@@ -333,4 +333,17 @@ class MessageRepository @Inject constructor(
             Log.e("MessageRepository", "Error marking messages as read: ${e.message}")
         }
     }
+
+    suspend fun getConversationById(conversationId: String): Result<Conversation> {
+        return try {
+            val conversationDoc = conversationsCollection.document(conversationId).get().await()
+            val conversation = conversationDoc.toObject(Conversation::class.java)
+                ?: return Result.failure(Exception("Conversation not found"))
+
+            Result.success(conversation)
+        } catch (e: Exception) {
+            Log.e("MessageRepository", "Error fetching conversation: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
 }
