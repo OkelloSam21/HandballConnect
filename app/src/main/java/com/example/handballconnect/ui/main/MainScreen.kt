@@ -72,7 +72,7 @@ fun MainScreen(
 
     // Update the isAdmin state whenever userData changes
     LaunchedEffect(userData) {
-        val adminStatus = userData?.isAdmin ?: false
+        val adminStatus = userData?.isAdmin == true
         Log.d("MainScreen", "User data updated, setting isAdmin to: $adminStatus")
         isAdmin = adminStatus
     }
@@ -143,6 +143,7 @@ fun MainScreen(
                     val feedViewModel: FeedViewModel = hiltViewModel()
                     FeedScreen(
                         feedViewModel = feedViewModel,
+                        navigateToProfile = {navController.navigate("profile")},
                         imageStorageManager = imageStorageManager
                     )
                 }
@@ -150,7 +151,9 @@ fun MainScreen(
                 composable("messages") {
                     val messageViewModel: MessageViewModel = hiltViewModel()
                     MessagesScreen(
-                        messageViewModel = messageViewModel,
+                        navigateToChat = { conversationId ->
+                            navController.navigate("chat/$conversationId")
+                        },
                         imageStorageManager = imageStorageManager
                     )
                 }
@@ -158,14 +161,6 @@ fun MainScreen(
                 composable("tactics") {
                     val tacticsViewModel: TacticsViewModel = hiltViewModel()
                     TacticsScreen(tacticsViewModel = tacticsViewModel)
-                }
-
-                composable("profile") {
-                    ProfileScreen(
-                        authViewModel = authViewModel,
-                        navController = navController,
-                        imageStorageManager = imageStorageManager
-                    )
                 }
 
                 composable("admin") {
@@ -211,12 +206,6 @@ private fun getNavigationItems(isAdmin: Boolean) :
                 title = "Tactics",
                 selectedIcon = Icons.Filled.SportsHandball,
                 unselectedIcon = Icons.Outlined.SportsHandball
-            ),
-            NavigationItem(
-                route = "profile",
-                title = "Profile",
-                selectedIcon = Icons.Filled.Person,
-                unselectedIcon = Icons.Outlined.Person
             )
         )
     if (isAdmin) {

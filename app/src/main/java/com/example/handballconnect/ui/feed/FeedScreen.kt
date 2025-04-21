@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -85,6 +86,7 @@ import java.util.Locale
 @Composable
 fun FeedScreen(
     feedViewModel: FeedViewModel,
+    navigateToProfile: () -> Unit,
     imageStorageManager: ImageStorageManager
 ) {
     val feedState by feedViewModel.feedState.collectAsState()
@@ -156,7 +158,12 @@ fun FeedScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Handball Feed") }
+                title = { Text("Handball Feed") },
+                actions = {
+                    IconButton(onClick = navigateToProfile) {
+                        Icon(Icons.Filled.Person, contentDescription = "Profile")
+                    }
+                }
             )
         },
         floatingActionButton = {
