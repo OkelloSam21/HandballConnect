@@ -80,7 +80,7 @@ fun HandballConnectApp(
             ProfileScreen(
                 authViewModel = authViewModel,
                 navController = navController,
-                navigateBack = {},
+                navigateBack = {navController.popBackStack()},
                 imageStorageManager = imageStorageManager
             )
         }

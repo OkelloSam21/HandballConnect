@@ -158,13 +158,18 @@ fun ProfileScreen(
         }
     }
 
-    // Initialize form values from user data
-    LaunchedEffect(userData, isEditMode) {
+    // Initialize form values from user data when userData changes
+    LaunchedEffect(userData) {
         userData?.let {
             username = it.username
             position = it.position
             experience = it.experience
         }
+    }
+
+    // Debug - add some logging to see what's happening
+    LaunchedEffect(userData) {
+        Log.d("ProfileScreen", "UserData loaded: ${userData?.username}, Position: ${userData?.position}")
     }
 
     Scaffold(
@@ -173,9 +178,9 @@ fun ProfileScreen(
             TopAppBar(
                 title = { Text("Profile") },
                 navigationIcon = {
-                    IconButton(
-                        onClick = navigateBack
-                    ) { Icon(Icons.Filled.ArrowBackIosNew, contentDescription = "Navigate back") }
+                    IconButton(onClick = navigateBack) {
+                        Icon(Icons.Filled.ArrowBackIosNew, contentDescription = "Navigate back")
+                    }
                 },
                 actions = {
                     if (isEditMode) {
@@ -188,365 +193,352 @@ fun ProfileScreen(
                             Icon(Icons.Default.Done, contentDescription = "Save")
                         }
                     } else {
-                        IconButton(
-                            onClick = { isEditMode = true }
-                        ) {
+                        IconButton(onClick = { isEditMode = true }) {
                             Icon(Icons.Default.Edit, contentDescription = "Edit")
                         }
                     }
 
-                    IconButton(
-                        onClick = { showLogoutDialog = true }
-                    ) {
+                    IconButton(onClick = { showLogoutDialog = true }) {
                         Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout")
                     }
                 }
             )
         }
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .verticalScroll(scrollState)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
+            // Profile Image
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .size(150.dp)
+                    .padding(8.dp),
+                contentAlignment = Alignment.Center
             ) {
-                // Profile Image
-                Box(
+                // Use LocalAwareAsyncImage for the profile image
+                LocalAwareAsyncImage(
+                    imageReference = userData?.profileImageUrl,
+                    imageStorageManager = imageStorageManager,
+                    contentDescription = "Profile picture",
                     modifier = Modifier
                         .size(150.dp)
-                        .padding(8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Use LocalAwareAsyncImage for the profile image
-                    LocalAwareAsyncImage(
-                        imageReference = userData?.profileImageUrl,
-                        imageStorageManager = imageStorageManager,
-                        contentDescription = "Profile picture",
+                        .clip(CircleShape)
+                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                    contentScale = ContentScale.Crop,
+                    fallbackImageUrl = "https://via.placeholder.com/150"
+                )
+
+                if (isEditMode) {
+                    Surface(
                         modifier = Modifier
-                            .size(150.dp)
-                            .clip(CircleShape)
-                            .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
-                        contentScale = ContentScale.Crop,
-                        fallbackImageUrl = "https://via.placeholder.com/150"
+                            .size(40.dp)
+                            .align(Alignment.BottomEnd)
+                            .clickable { imagePicker.launch("image/*") },
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = CircleShape
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Camera,
+                                contentDescription = "Change picture",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center)
                     )
-
-                    if (isEditMode) {
-                        Surface(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .align(Alignment.BottomEnd)
-                                .clickable { imagePicker.launch("image/*") },
-                            color = MaterialTheme.colorScheme.primary,
-                            shape = CircleShape
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Camera,
-                                    contentDescription = "Change picture",
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
                 }
+            }
 
-                // Rest of the profile screen content...
-                // (User info card, edit fields, etc.)
+            Spacer(modifier = Modifier.height(24.dp))
 
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // User info card
-                Card(
+            // User info card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp)
+                        .fillMaxWidth()
+                        .padding(16.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        if (isEditMode) {
-                            // Edit mode - show form fields
-                            Text(
-                                text = "Edit Profile",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            OutlinedTextField(
-                                value = username,
-                                onValueChange = { username = it },
-                                label = { Text("Username") },
-                                leadingIcon = { Icon(Icons.Default.Person, contentDescription = "Username") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Position dropdown
-                            ExposedDropdownMenuBox(
-                                expanded = isPositionMenuExpanded,
-                                onExpandedChange = { isPositionMenuExpanded = it }
-                            ) {
-                                OutlinedTextField(
-                                    value = position,
-                                    onValueChange = { position = it },
-                                    label = { Text("Position") },
-                                    readOnly = true,
-                                    trailingIcon = {
-                                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = isPositionMenuExpanded)
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .menuAnchor()
-                                )
-
-                                ExposedDropdownMenu(
-                                    expanded = isPositionMenuExpanded,
-                                    onDismissRequest = { isPositionMenuExpanded = false }
-                                ) {
-                                    positions.forEach { option ->
-                                        DropdownMenuItem(
-                                            text = { Text(option) },
-                                            onClick = {
-                                                position = option
-                                                isPositionMenuExpanded = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Experience dropdown
-                            ExposedDropdownMenuBox(
-                                expanded = isExperienceMenuExpanded,
-                                onExpandedChange = { isExperienceMenuExpanded = it }
-                            ) {
-                                OutlinedTextField(
-                                    value = experience,
-                                    onValueChange = { experience = it },
-                                    label = { Text("Experience Level") },
-                                    readOnly = true,
-                                    trailingIcon = {
-                                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = isExperienceMenuExpanded)
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .menuAnchor()
-                                )
-
-                                ExposedDropdownMenu(
-                                    expanded = isExperienceMenuExpanded,
-                                    onDismissRequest = { isExperienceMenuExpanded = false }
-                                ) {
-                                    experiences.forEach { option ->
-                                        DropdownMenuItem(
-                                            text = { Text(option) },
-                                            onClick = {
-                                                experience = option
-                                                isExperienceMenuExpanded = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            // Display mode - show user info
-                            Text(
-                                text = userData?.username ?: "",
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Text(
-                                text = userData?.email ?: "",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-
-                            Spacer(modifier = Modifier.height(16.dp))
-                            HorizontalDivider()
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Display user details
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Position:",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-
-                                Spacer(modifier = Modifier.width(8.dp))
-
-                                Text(
-                                    text = userData?.position?.takeIf { it.isNotEmpty() } ?: "Not specified",
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Experience Level:",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-
-                                Spacer(modifier = Modifier.width(8.dp))
-
-                                Text(
-                                    text = userData?.experience?.takeIf { it.isNotEmpty() } ?: "Not specified",
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
-                            }
-
-                            // Show admin badge if user is admin
-                            if (userData?.isAdmin == true) {
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                Surface(
-                                    color = MaterialTheme.colorScheme.secondaryContainer,
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = "Admin",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Stats/activity card (for future implementation)
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
+                    if (isEditMode) {
+                        // Edit mode - show form fields
                         Text(
-                            text = "Activity Summary",
+                            text = "Edit Profile",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
+                        OutlinedTextField(
+                            value = username,
+                            onValueChange = { username = it },
+                            label = { Text("Username") },
+                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = "Username") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Position dropdown
+                        ExposedDropdownMenuBox(
+                            expanded = isPositionMenuExpanded,
+                            onExpandedChange = { isPositionMenuExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = position,
+                                onValueChange = { position = it },
+                                label = { Text("Position") },
+                                readOnly = true,
+                                trailingIcon = {
+                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = isPositionMenuExpanded)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .menuAnchor()
+                            )
+
+                            ExposedDropdownMenu(
+                                expanded = isPositionMenuExpanded,
+                                onDismissRequest = { isPositionMenuExpanded = false }
+                            ) {
+                                positions.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option) },
+                                        onClick = {
+                                            position = option
+                                            isPositionMenuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Experience dropdown
+                        ExposedDropdownMenuBox(
+                            expanded = isExperienceMenuExpanded,
+                            onExpandedChange = { isExperienceMenuExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = experience,
+                                onValueChange = { experience = it },
+                                label = { Text("Experience Level") },
+                                readOnly = true,
+                                trailingIcon = {
+                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = isExperienceMenuExpanded)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .menuAnchor()
+                            )
+
+                            ExposedDropdownMenu(
+                                expanded = isExperienceMenuExpanded,
+                                onDismissRequest = { isExperienceMenuExpanded = false }
+                            ) {
+                                experiences.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option) },
+                                        onClick = {
+                                            experience = option
+                                            isExperienceMenuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // Display mode - show user info
+                        Text(
+                            text = userData?.username ?: "",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = userData?.email ?: "",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        HorizontalDivider()
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Display user details
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "0",
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = "Posts",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
+                            Text(
+                                text = "Position:",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
 
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "0",
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = "Comments",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
+                            Spacer(modifier = Modifier.width(8.dp))
 
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
+                            Text(
+                                text = userData?.position?.takeIf { it.isNotEmpty() } ?: "Not specified",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Experience Level:",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Text(
+                                text = userData?.experience?.takeIf { it.isNotEmpty() } ?: "Not specified",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+
+                        // Show admin badge if user is admin
+                        if (userData?.isAdmin == true) {
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text(
-                                    text = "0",
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = "Tactics",
-                                    style = MaterialTheme.typography.bodyMedium
+                                    text = "Admin",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Logout confirmation dialog
-        if (showLogoutDialog) {
-            AlertDialog(
-                onDismissRequest = { showLogoutDialog = false },
-                title = { Text("Logout") },
-                text = { Text("Are you sure you want to logout?") },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            authViewModel.logoutUser()
-                            navController.navigate("login") {
-                                popUpTo("main") { inclusive = true }
-                            }
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Stats/activity card (for future implementation)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Activity Summary",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "0",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Posts",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
                         }
-                    ) {
-                        Text("Logout")
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = { showLogoutDialog = false }
-                    ) {
-                        Text("Cancel")
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "0",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Comments",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "0",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Tactics",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
                     }
                 }
-            )
+            }
         }
+    }
+
+    // Logout confirmation dialog
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = { Text("Logout") },
+            text = { Text("Are you sure you want to logout?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        authViewModel.logoutUser()
+                        navController.navigate("login") {
+                            popUpTo("main") { inclusive = true }
+                        }
+                    }
+                ) {
+                    Text("Logout")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showLogoutDialog = false }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
