@@ -147,6 +147,7 @@ class ChatViewModel @Inject constructor(
 
 // Users state sealed class
 sealed class UsersState {
+    object Initial: UsersState()
     object Loading : UsersState()
     object Empty : UsersState()
     data class Success(val users: List<User>) : UsersState()

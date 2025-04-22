@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,7 +56,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.handballconnect.data.model.Conversation
 import com.example.handballconnect.data.model.User
 import com.example.handballconnect.data.storage.ImageStorageManager
-import com.example.handballconnect.ui.feed.formatTimestamp
 import com.example.handballconnect.util.LocalAwareAsyncImage
 import kotlinx.coroutines.launch
 
@@ -119,8 +118,7 @@ fun MessagesScreen(
                 }
 
                 is ConversationsState.Success -> {
-                    val conversations =
-                        (conversationsState as ConversationsState.Success).conversations
+                    val conversations = (conversationsState as ConversationsState.Success).conversations
                     LazyColumn(
                         modifier = Modifier.fillMaxSize()
                     ) {
@@ -187,8 +185,7 @@ fun MessagesScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                shape = RoundedCornerShape(16.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -211,10 +208,7 @@ fun MessagesScreen(
                                     .height(200.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = (usersState as UsersState.Error).message,
-                                    color = MaterialTheme.colorScheme.error
-                                )
+                                CircularProgressIndicator()
                             }
                         }
 
@@ -233,8 +227,7 @@ fun MessagesScreen(
                                             scope.launch {
                                                 try {
                                                     messageViewModel.startConversation(user.userId)
-                                                    val conversation =
-                                                        messageViewModel.selectedConversation.value
+                                                    val conversation = messageViewModel.selectedConversation.value
                                                     if (conversation != null) {
                                                         showNewConversationDialog = false
                                                         navigateToChat(conversation.conversationId)
@@ -274,6 +267,18 @@ fun MessagesScreen(
                                 )
                             }
                         }
+
+                        // Handle Initial state to avoid ClassCastException
+                        is UsersState.Initial -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        }
                     }
                 }
             }
@@ -281,171 +286,208 @@ fun MessagesScreen(
     }
 }
 
-        @Composable
-        fun ConversationItem(
-            conversation: Conversation,
-            onClick: () -> Unit,
-            imageStorageManager: ImageStorageManager
+@Composable
+fun ConversationItem(
+    conversation: Conversation,
+    onClick: () -> Unit,
+    imageStorageManager: ImageStorageManager
+) {
+    val currentUserId = conversation.participantIds.getOrNull(0) ?: ""
+    val otherUserId = conversation.participantIds.firstOrNull { it != currentUserId } ?: ""
+
+    val otherUserName = conversation.participantNames[otherUserId] ?: "Unknown User"
+    val otherUserImage = conversation.participantImages[otherUserId] ?: ""
+    val unreadCount = conversation.unreadCount[currentUserId] ?: 0
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Profile image
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
         ) {
-            val currentUserId = conversation.participantIds.getOrNull(0) ?: ""
-            val otherUserId = conversation.participantIds.firstOrNull { it != currentUserId } ?: ""
-
-            val otherUserName = conversation.participantNames[otherUserId] ?: "Unknown User"
-            val otherUserImage = conversation.participantImages[otherUserId] ?: ""
-            val unreadCount = conversation.unreadCount[currentUserId] ?: 0
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onClick() }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Profile image
-                Box(
+            if (otherUserImage.isNotEmpty()) {
+                LocalAwareAsyncImage(
+                    imageReference = otherUserImage,
+                    imageStorageManager = imageStorageManager,
+                    contentDescription = otherUserName,
                     modifier = Modifier
                         .size(56.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (otherUserImage.isNotEmpty()) {
-                        LocalAwareAsyncImage(
-                            imageReference = otherUserImage,
-                            imageStorageManager = imageStorageManager,
-                            contentDescription = otherUserName,
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape)
-                                .border(
-                                    1.dp,
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                                    CircleShape
-                                ),
-                            contentScale = ContentScale.Crop,
-                            fallbackImageUrl = null
-                        )
-                    } else {
-                        Text(
-                            text = otherUserName.take(1).uppercase(),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = otherUserName,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-
-                        Text(
-                            text = formatTimestamp(conversation.lastMessageTimestamp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = conversation.lastMessage.takeIf { it.isNotEmpty() }
-                                ?: "No messages yet",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        // Unread message badge
-                        if (unreadCount > 0) {
-                            BadgedBox(
-                                badge = {
-                                    Badge {
-                                        Text(unreadCount.toString())
-                                    }
-                                }
-                            ) {}
-                        }
-                    }
-                }
+                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), CircleShape),
+                    contentScale = ContentScale.Crop,
+                    fallbackImageUrl = null
+                )
+            } else {
+                Text(
+                    text = otherUserName.take(1).uppercase(),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
-        @Composable
-        fun UserItem(
-            user: User,
-            onClick: () -> Unit,
-            imageStorageManager: ImageStorageManager
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(
+            modifier = Modifier.weight(1f)
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onClick() }
-                    .padding(16.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // User profile image
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (user.profileImageUrl.isNotEmpty()) {
-                        LocalAwareAsyncImage(
-                            imageReference = user.profileImageUrl,
-                            imageStorageManager = imageStorageManager,
-                            contentDescription = user.username,
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop,
-                            fallbackImageUrl = null
-                        )
-                    } else {
+                Text(
+                    text = otherUserName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Text(
+                    text = formatTimestamp(conversation.lastMessageTimestamp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = conversation.lastMessage.takeIf { it.isNotEmpty() }
+                        ?: "No messages yet",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Unread message badge
+                if (unreadCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .size(20.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primary,
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Text(
-                            text = user.username.take(1).uppercase(),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                Column {
-                    Text(
-                        text = user.username,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    if (user.position.isNotEmpty()) {
-                        Text(
-                            text = user.position,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = unreadCount.toString(),
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun UserItem(
+    user: User,
+    onClick: () -> Unit,
+    imageStorageManager: ImageStorageManager
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // User profile image
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            if (user.profileImageUrl.isNotEmpty()) {
+                LocalAwareAsyncImage(
+                    imageReference = user.profileImageUrl,
+                    imageStorageManager = imageStorageManager,
+                    contentDescription = user.username,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop,
+                    fallbackImageUrl = null
+                )
+            } else {
+                Text(
+                    text = user.username.take(1).uppercase(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column {
+            Text(
+                text = user.username,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            if (user.position.isNotEmpty()) {
+                Text(
+                    text = user.position,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+// Helper function for timestamp formatting
+fun formatTimestamp(timestamp: Long): String {
+    val now = java.util.Date()
+    val messageDate = java.util.Date(timestamp)
+    val diffInMillis = now.time - messageDate.time
+    val diffInDays = diffInMillis / (1000 * 60 * 60 * 24)
+
+    return when {
+        diffInDays < 1 -> {
+            // Today - show time only
+            val formatter = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            formatter.format(messageDate)
+        }
+
+        diffInDays < 2 -> {
+            // Yesterday
+            "Yesterday"
+        }
+
+        diffInDays < 7 -> {
+            // Within a week - show day name
+            val formatter = java.text.SimpleDateFormat("EEEE", java.util.Locale.getDefault())
+            formatter.format(messageDate)
+        }
+
+        else -> {
+            // Older - show date
+            val formatter = java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault())
+            formatter.format(messageDate)
+        }
+    }
+}
